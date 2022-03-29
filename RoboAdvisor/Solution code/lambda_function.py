@@ -1,4 +1,5 @@
 ### Required Libraries ###
+
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
@@ -79,8 +80,68 @@ def close(session_attributes, fulfillment_state, message):
 
     return response
 
+"""
+Inputted below for updating the lambda function
+"""
+
+def parse_float(n):
+    """
+    Convert non-numeric value to float
+    """
+    try:
+        return float (n)
+    except ValueError:
+        return float("nan")
+
+def validate_data(age, investment_amount):
+    """
+    Validate the data inputted by user
+    """
+
+    # Validate the age between 0 and 65
+    if age is not None:
+        age = parse_float(
+            age
+        )
+        if age < 0 or age >65:
+            return build_validation_result(
+                False,
+                "age",
+                "Age should be between zero (0) and 65 years,"
+                "Please review age inputted"
+        )
+    
+    # Validate the investment amount, it should be >0
+
+    if investment_amount is not None:
+        investment_amount = parse_float(
+            investment_amount
+        )
+        if investment_amount < 5000:
+            return build_validation_result(
+                False,
+                "investmentAmount",
+                "The investment amount should be equal to or greater than 5000, "
+                "Please enter a new amount"
+            )
+    
+    # True result is returned
+
+    return build_validation_result(True, None, None)
+
+def get_recommendation(riskLevel):
+    risk = {
+        "none" : "100% bonds (AGG), 0% equities (SPY)",
+        "very low" : "80% bonds (AGG), 20% equities (SPY)",
+        "low" : "60% bonds (AGG), 40% equities (SPY)",
+        "medium" : "40% bonds (AGG), 60% equities (SPY)",
+        "high" : "20% bonds (AGG), 80% equities (SPY)",
+        "very high" : "0% bonds (AGG), 100% equities (SPY)"
+    }
+    return risk[riskLevel.lower()]
 
 ### Intents Handlers ###
+
 def recommend_portfolio(intent_request):
     """
     Performs dialog management and fulfillment for recommending a portfolio.
@@ -97,11 +158,27 @@ def recommend_portfolio(intent_request):
         # Use the elicitSlot dialog action to re-prompt
         # for the first violation detected.
 
+        slots = get_slots(intent_request)
+
         ### YOUR DATA VALIDATION CODE STARTS HERE ###
+
+        validation_result = validate_data(age, investment_amount)
+
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None 
+
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
 
         ### YOUR DATA VALIDATION CODE ENDS HERE ###
 
         # Fetch current session attibutes
+
         output_session_attributes = intent_request["sessionAttributes"]
 
         return delegate(output_session_attributes, get_slots(intent_request))
@@ -110,9 +187,12 @@ def recommend_portfolio(intent_request):
 
     ### YOUR FINAL INVESTMENT RECOMMENDATION CODE STARTS HERE ###
 
+    initial_recommendation = get_recommendation(risk_level)
+
     ### YOUR FINAL INVESTMENT RECOMMENDATION CODE ENDS HERE ###
 
     # Return a message with the initial recommendation based on the risk level.
+    
     return close(
         intent_request["sessionAttributes"],
         "Fulfilled",
@@ -126,8 +206,8 @@ def recommend_portfolio(intent_request):
         },
     )
 
-
 ### Intents Dispatcher ###
+
 def dispatch(intent_request):
     """
     Called when the user specifies an intent for this bot.
@@ -141,7 +221,6 @@ def dispatch(intent_request):
 
     raise Exception("Intent with name " + intent_name + " not supported")
 
-
 ### Main Handler ###
 def lambda_handler(event, context):
     """
@@ -149,4 +228,8 @@ def lambda_handler(event, context):
     The JSON body of the request is provided in the event slot.
     """
 
-    return dispatch(event)
+    print("Input:", event)
+    result=dispatch(event)
+
+    print("Output:", result)
+    return result
